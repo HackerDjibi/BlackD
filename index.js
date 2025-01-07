@@ -170,14 +170,14 @@ const verif_Admin = verif_Groupe
         await Ranks.create({
             id: userId,
             name: nom_Auteur_Message,
-            level: 0,
-            exp: 10,
-            messages: 1,
+            level: 1,
+            exp: 100,
+            messages: ,
         });
     } else {
         user.name = nom_Auteur_Message;
         user.messages += 1;
-        user.exp += 10;
+        user.exp += 10000;
 
         const newLevel = calculateLevel(user.exp);
 
