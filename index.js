@@ -171,13 +171,13 @@ const verif_Admin = verif_Groupe
             id: userId,
             name: nom_Auteur_Message,
             level: 1,
-            exp: 100,
+            exp: 80000,
             messages: ,
         });
     } else {
         user.name = nom_Auteur_Message;
         user.messages += 1;
-        user.exp += 10000;
+        user.exp += 200;
 
         const newLevel = calculateLevel(user.exp);
 
