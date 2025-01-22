@@ -16,7 +16,6 @@ const { GroupSettings } = require("./DataBase/events");
 const { levels, calculateLevel } = require('./DataBase/levels');
 const { Ranks } = require('./DataBase/rank');
 const { Sudo } = require('./DataBase/sudo');
-const { Antidelete } = require("./DataBase/antidelete");
 const { getMessage, addMessage } = require('./framework/store');
 
  async function ovlAuth(session) {
@@ -58,7 +57,6 @@ async function main() {
            }
         });
 store.bind(ovl.ev);
-let dev_id;
 ovl.ev.on("messages.upsert", async (m) => {
     if (m.type !== 'notify') return;
 
@@ -96,7 +94,7 @@ ovl.ev.on("messages.upsert", async (m) => {
     const msg_Repondu = ms.message.extendedTextMessage?.contextInfo?.quotedMessage;
     const auteur_Msg_Repondu = decodeJid(ms.message.extendedTextMessage?.contextInfo?.participant);
     const mr = ms.message.extendedTextMessage?.contextInfo?.mentionedJid;
-    const auteur_Message = verif_Groupe ? ms.key.participant || ms.participant : ms_org;
+    const auteur_Message = verif_Groupe ? ms.key.participant : decodeJid(ms.key.fromMe ? id_Bot : ms.key.remoteJid);
     const membre_Groupe = verif_Groupe ? ms.key.participant : '';
     const nom_Auteur_Message = ms.pushName;
     const arg = texte ? texte.trim().split(/ +/).slice(1) : null;
@@ -126,7 +124,7 @@ const premium_Users_id = [Ainz, Ainzbot, id_Bot_N, config.NUMERO_OWNER, sudoUser
   .flat()
   .map((s) => (typeof s === 'string' ? `${s.replace(/[^0-9]/g, "")}@s.whatsapp.net` : ''));
 const prenium_id = premium_Users_id.includes(auteur_Message);
- dev_id = devNumbers
+const dev_id = devNumbers
   .map((s) => (typeof s === 'string' ? `${s.replace(/[^0-9]/g, "")}@s.whatsapp.net` : ''))
   .includes(auteur_Message);
 const dev_num = devNumbers
@@ -341,39 +339,49 @@ try {
 // fin antibot
 
  //antidelete
-if (mtype === 'protocolMessage') {
-    const deletedMsgKey = ms.message.protocolMessage;
-    const deletedMsg = getMessage(deletedMsgKey.key.id);
-    const settings = await Antidelete.findOne({ where: { id: 'global' } });
+ try {
+    if (mtype == 'protocolMessage' && ['pm', 'gc', 'status', 'all'].includes(config.ANTIDELETE)) {
+        const deletedMsgKey = ms.message.protocolMessage;
+        const deletedMsg = getMessage(deletedMsgKey.key.id);
+        if (deletedMsg) {
+            const jid = deletedMsg.key.remoteJid;
+            const vg = jid?.endsWith("@g.us");
+            const sender = vg 
+                ? (deletedMsg.key.participant || deletedMsg.participant)
+                : jid;
+            const deletionTime = new Date().toISOString().substr(11, 8);
 
-    if (settings.mode === 'oui' && deletedMsg) {
-        const jid = deletedMsgKey.key.remoteJid;
-        const vg = jid?.endsWith("@g.us");
-        const sender = vg ? (deletedMsg.key.participant || deletedMsg.participant) : jid;
-        const deletionTime = new Date().toISOString().substr(11, 8);
+            if (!deletedMsg.key.fromMe) {
+                const provenance = jid.endsWith('@g.us') 
+                    ? `👥 Groupe : ${(await ovl.groupMetadata(jid)).subject}`
+                    : `📩 Chat : @${jid.split('@')[0]}`;
 
-        if (deletedMsg.key.fromMe) return;
-
-        const provenance = jid.endsWith('@g.us') 
-            ? `👥 Groupe : ${(await ovl.groupMetadata(jid)).subject}`
-            : `📩 Chat : Discussion privée`;
-        const deleter = verif_Groupe ? (deletedMsgKey.key.participant || deletedMsgKey.participant) : ms_org;
-        const header = `
-✨ OVL-MD ANTIDELETE MESSAGE ✨
+                const header = `
+✨ OVL-MD ANTI-DELETE MSG✨
 👤 Envoyé par : @${sender.split('@')[0]}
-❌ Supprimé par : @${deleter.split('@')[0]}
+❌ Supprimé par : @${auteur_Message.split('@')[0]}
 ⏰ Heure de suppression : ${deletionTime}
 ${provenance}
-        `;
+                `;
 
-        if (settings.type === 'gc') {
-            await ovl.sendMessage(jid, { text: header, mentions: [sender, deleter] }, { quoted: deletedMsg });
-            await ovl.sendMessage(jid, { forward: deletedMsg }, { quoted: deletedMsg });
-        } else if (settings.type === 'pm') {
-            await ovl.sendMessage(ovl.user.id, { text: header, mentions: [sender, deleter] }, { quoted: deletedMsg });
-            await ovl.sendMessage(ovl.user.id, { forward: deletedMsg }, { quoted: deletedMsg });
+                if (config.ANTIDELETE == 'gc' && jid.endsWith('@g.us')) {
+                    await ovl.sendMessage(ovl.user.id, { text: header, mentions: [sender, auteur_Message, jid] }, { quoted: deletedMsg });
+                    await ovl.sendMessage(ovl.user.id, { forward: deletedMsg }, { quoted: deletedMsg });
+                } else if (config.ANTIDELETE == 'pm' && jid.endsWith('@s.whatsapp.net')) {
+                    await ovl.sendMessage(ovl.user.id, { text: header, mentions: [sender, auteur_Message, jid] }, { quoted: deletedMsg });
+                    await ovl.sendMessage(ovl.user.id, { forward: deletedMsg }, { quoted: deletedMsg });
+                } else if (config.ANTIDELETE == 'status' && jid.endsWith('status@broadcast')) {
+                    await ovl.sendMessage(ovl.user.id, { text: header, mentions: [sender, auteur_Message, jid] }, { quoted: deletedMsg });
+                    await ovl.sendMessage(ovl.user.id, { forward: deletedMsg }, { quoted: deletedMsg });
+                } else if (config.ANTIDELETE == 'all') {
+                    await ovl.sendMessage(ovl.user.id, { text: header, mentions: [sender, auteur_Message, jid] }, { quoted: deletedMsg });
+                    await ovl.sendMessage(ovl.user.id, { forward: deletedMsg }, { quoted: deletedMsg });
+                }
+            }
         }
     }
+} catch (err) {
+    console.error('Une erreur est survenue', err);
 }
 
  //fin antidelete
@@ -396,7 +404,7 @@ async function groupe_ban(groupId) {
                 if (config.MODE !== 'public' && !prenium_id) {
                     return 
                 }
-                if (!dev_id && ms_org === "120363314687943170@g.us") {
+                if ((!dev_id && auteur_Message !== '221772430620@s.whatsapp.net') && ms_org === "120363314687943170@g.us") {
                 return;
             }
                 if (!prenium_id) {
@@ -434,10 +442,6 @@ ovl.ev.on('group-participants.update', async (data) => {
 
     const  groupPic = 'https://files.catbox.moe/54ip7g.jpg';
   try {
-   
-   if (!dev_id && ms_org === "120363314687943170@g.us") {
-                return;
-   }
         const groupInfo = await ovl.groupMetadata(data.id);
         const settings = await GroupSettings.findOne({ where: { id: data.id } });
         if (!settings) return;

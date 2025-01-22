@@ -5,22 +5,46 @@ const cookie = require("cookie");
 async function fbdl(url, maxRetries = 5) {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      const response = await axios.post(
-        "https://www.getfvid.com/downloader",
-        new URLSearchParams({
-          url: url,
-        }),
-        {
-          headers: {
-            "accept": "*/*",
-            "content-type": "application/x-www-form-urlencoded",
-            "user-agent": "GoogleBot",
-          },
-        }
-      );
+      const response = await axios.get("https://fdown.net/", {
+        headers: {
+          "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9",
+          "accept-language": "en-US,en;q=0.9,id;q=0.8",
+          "user-agent": "GoogleBot",
+        },
+        maxRedirects: 5,
+      });
+
+      const cookies = response.headers["set-cookie"];
+      const initialCookies = cookies
+        .map(cookieStr => cookie.parse(cookieStr))
+        .reduce((acc, curr) => ({ ...acc, ...curr }), {});
 
       const $ = cheerio.load(response.data);
-      const firstDownloadLink = $('a.btn-download').first().attr('href');
+      const token = $('#token').attr('value');
+
+      const sessionCookies = Object.entries({
+        __cfduid: initialCookies.__cfduid || "",
+        PHPSESSID: initialCookies.PHPSESSID || "",
+      })
+        .map(([key, value]) => cookie.serialize(key, value))
+        .join("; ");
+      
+      const rep = await axios.post(
+                "https://fdown.net/download.php",
+                new URLSearchParams({
+                    URLz: url,
+                }).toString(),
+                {
+                    headers: {
+                        "Content-Type": "application/x-www-form-urlencoded",
+                        "User-Agent": "GoogleBot",
+                        "cookie": sessionCookies,
+                    },
+                }
+            );
+
+      const a = cheerio.load(rep.data);
+      const firstDownloadLink = a("#sdlink").attr("href");
 
       if (!firstDownloadLink) {
         throw new Error('Aucun lien de téléchargement trouvé.');
@@ -35,6 +59,7 @@ async function fbdl(url, maxRetries = 5) {
     }
   }
 }
+
 
 async function ttdl(url, maxRetries = 5) {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
